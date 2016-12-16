@@ -1,11 +1,8 @@
 package validation
 
 import (
-	"errors"
+	"fmt"
 	"strings"
-
-	"github.com/raframework/rago/raerror"
-	"github.com/raframework/rago/ralog"
 )
 
 type validator struct {
@@ -33,11 +30,28 @@ func explodeRules(rules map[string]interface{}) map[string][]string {
 			sliceRule, _ := rule.([]string)
 			r[attribute] = sliceRule
 		default:
-			panic("Invalid type of rule")
+			panic(fmt.Sprintf("validation: invalid rule type for attribute %s, string or []string expected.", attribute))
+		}
+
+		if !isValidRules(r[attribute]) {
+			panic(fmt.Sprintf("validation: invalid rule for attribute %s", attribute))
 		}
 	}
 
 	return r
+}
+
+func isValidRules(rules []string) bool {
+	if len(rules) == 0 {
+		return false
+	}
+	for _, rule := range rules {
+		if rule == "" {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (v *validator) Fails() bool {
@@ -61,7 +75,6 @@ func (v *validator) GetMessage() string {
 }
 
 func (v *validator) validate(attribute, rule string) bool {
-	ralog.Debug("validation: validate, attribute: ", attribute, " rule: ", rule)
 	rule, parameters := parseRule(rule)
 	value := v.getValue(attribute)
 
@@ -70,16 +83,19 @@ func (v *validator) validate(attribute, rule string) bool {
 	}
 
 	method, err := getRuleMethod(rule)
-	ralog.Debug("validation: method: ", method)
 	if err != nil {
-		e := "validation: rule " + rule + " not supported"
-		ralog.Critical(e)
-		raerror.PanicWith(raerror.TypInvalidArgument, 0, e)
+		panic(err)
 	}
 
-	// Call the rule method
+	// Call the method of rule.
 	if !method(attribute, value, parameters) {
-		message, _ := defaultMessages[rule]
+		var message string
+		if rule == "max" || rule == "min" || rule == "size" || rule == "between" {
+			message, _ = defaultRuleMessages2[rule][getType(value)]
+		} else {
+			message, _ = defaultRuleMessages[rule]
+		}
+
 		if rule == "size" {
 			message = strings.Replace(message, ":size", parameters[0], -1)
 		} else if rule == "max" {
@@ -89,6 +105,8 @@ func (v *validator) validate(attribute, rule string) bool {
 		} else if rule == "between" {
 			message = strings.Replace(message, ":min", parameters[0], -1)
 			message = strings.Replace(message, ":max", parameters[1], -1)
+		} else if rule == "in" {
+			message = strings.Replace(message, ":values", strings.Join(parameters, ","), -1)
 		}
 		message = strings.Replace(message, ":attribute", attribute, -1)
 		v.message = message
@@ -117,15 +135,6 @@ func (v *validator) getValue(attribute string) interface{} {
 	}
 
 	return value
-}
-
-func getRuleMethod(rule string) (ruleMethod, error) {
-	method, ok := ruleMethodMap[rule]
-	if !ok {
-		return nil, errors.New("rule '" + rule + "'method not found")
-	}
-
-	return method, nil
 }
 
 func parseParameters(rule, parameter string) []string {
