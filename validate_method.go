@@ -22,6 +22,8 @@ func requireParameterCount(count int, parameters []string, rule string) {
 
 func getSize(rule string, value interface{}) (float64, error) {
 	switch value.(type) {
+	case int:
+		return float64(value.(int)), nil
 	case float64:
 		return value.(float64), nil
 	case string:
@@ -33,6 +35,8 @@ func getSize(rule string, value interface{}) (float64, error) {
 
 func getType(value interface{}) string {
 	switch value.(type) {
+	case int:
+		return "float"
 	case float64:
 		return "float"
 	case string:
@@ -43,12 +47,12 @@ func getType(value interface{}) string {
 }
 
 func stringTofloat64(rule, s string) float64 {
-	i, err := strconv.Atoi(s)
+	f, err := strconv.ParseFloat(s, 64)
 	if err != nil {
-		panic(fmt.Sprintf("validation: invalid parameter for rule %s, a numeric string is required.", rule))
+		panic(fmt.Sprintf("validation: invalid parameter for rule %s, a float string is required.", rule))
 	}
 
-	return float64(i)
+	return f
 }
 
 func validateAlpha(attribute string, value interface{}, parameters []string) bool {
@@ -141,10 +145,18 @@ func validateFloat(attribute string, value interface{}, parameters []string) boo
 func validateIn(attribute string, value interface{}, parameters []string) bool {
 	requireParameterCount(1, parameters, "in")
 
-	strValue, ok := value.(string)
-	if !ok {
+	var strValue string
+	switch value.(type) {
+	case int:
+		strValue = strconv.Itoa(value.(int))
+	case float64:
+		strValue = strconv.FormatFloat(value.(float64), 'f', -1, 64)
+	case string:
+		strValue = value.(string)
+	default:
 		return false
 	}
+
 	for _, v := range parameters {
 		if strValue == v {
 			return true
